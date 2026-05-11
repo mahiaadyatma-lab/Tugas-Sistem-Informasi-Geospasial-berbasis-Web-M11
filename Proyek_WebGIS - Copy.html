@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>WebGIS OGC Service</title>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@latest/ol.css">
+<script src="https://cdn.jsdelivr.net/npm/ol@latest/dist/ol.js"></script>
+
+<style>
+
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+body{
+    font-family:Arial, Helvetica, sans-serif;
+    overflow:hidden;
+    background:#f4f4f4;
+}
+
+#map{
+    width:100%;
+    height:100vh;
+}
+
+.panel{
+    position:absolute;
+
+    top:15px;
+    right:15px;
+
+    z-index:1000;
+
+    width:260px;
+
+    background:white;
+
+    padding:18px;
+
+    border-radius:12px;
+
+    box-shadow:0 4px 12px rgba(0,0,0,0.15);
+}
+
+.panel h2{
+    font-size:20px;
+    margin-bottom:5px;
+    color:#222;
+}
+
+.panel p{
+    font-size:13px;
+    color:#666;
+    margin-bottom:15px;
+}
+
+.section{
+    margin-bottom:18px;
+}
+
+.section h4{
+    font-size:14px;
+    margin-bottom:10px;
+    color:#333;
+}
+
+.layer-item{
+    margin-bottom:8px;
+    font-size:14px;
+}
+
+select{
+    width:100%;
+    padding:8px;
+
+    border:1px solid #ccc;
+    border-radius:6px;
+
+    outline:none;
+}
+
+.ol-popup{
+    position:absolute;
+
+    background:white;
+
+    padding:12px;
+
+    border-radius:10px;
+
+    border:1px solid #ddd;
+
+    min-width:200px;
+
+    box-shadow:0 3px 10px rgba(0,0,0,0.15);
+}
+
+.popup-title{
+    font-size:16px;
+    font-weight:bold;
+    margin-bottom:8px;
+    color:#222;
+}
+
+.popup-content{
+    font-size:14px;
+    line-height:1.5;
+}
+
+.credit{
+    margin-top:15px;
+    font-size:11px;
+    color:#888;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="panel">
+
+    <h2>WebGIS OGC</h2>
+
+    <p>
+        Visualisasi WMS dan WFS menggunakan OpenLayers
+    </p>
+
+    <div class="section">
+
+        <h4>Layer</h4>
+
+        <div class="layer-item">
+            <input type="checkbox" id="wmsCheck" checked>
+            <label for="wmsCheck">Layer WMS</label>
+        </div>
+
+        <div class="layer-item">
+            <input type="checkbox" id="wfsCheck" checked>
+            <label for="wfsCheck">Layer WFS</label>
+        </div>
+
+    </div>
+
+    <div class="section">
+
+        <h4>Filter Data</h4>
+
+        <select id="filterData">
+
+            <option value="">
+                Semua Data
+            </option>
+
+            <option value="PERSONS > 10000000">
+                Penduduk > 10 Juta
+            </option>
+
+            <option value="PERSONS < 5000000">
+                Penduduk < 5 Juta
+            </option>
+
+            <option value="STATE_NAME LIKE 'N%'">
+                Nama diawali N
+            </option>
+
+        </select>
+
+    </div>
+
+    <div class="credit">
+        OpenLayers + GeoServer
+    </div>
+
+</div>
+
+<div id="map"></div>
+
+<div id="popup" class="ol-popup">
+    <div id="popup-content"></div>
+</div>
+
+<script>
+
+// BASEMAP
+
+const osm = new ol.layer.Tile({
+
+    source:new ol.source.OSM()
+});
+
+// WMS
+
+const wmsSource = new ol.source.TileWMS({
+
+    url:'https://ahocevar.com/geoserver/wms',
+
+    params:{
+        'LAYERS':'topp:states',
+        'TILED':true
+    },
+
+    serverType:'geoserver',
+    crossOrigin:'anonymous'
+});
+
+const wmsLayer = new ol.layer.Tile({
+
+    source:wmsSource
+});
+
+// WFS
+
+const wfsSource = new ol.source.Vector({
+
+    format:new ol.format.GeoJSON(),
+
+    url:
+    'https://ahocevar.com/geoserver/wfs?' +
+    'service=WFS&' +
+    'version=1.1.0&' +
+    'request=GetFeature&' +
+    'typename=topp:states&' +
+    'outputFormat=application/json&' +
+    'srsname=EPSG:3857'
+});
+
+const wfsLayer = new ol.layer.Vector({
+
+    source:wfsSource,
+
+    style:new ol.style.Style({
+
+        stroke:new ol.style.Stroke({
+            color:'#2563eb',
+            width:2
+        }),
+
+        fill:new ol.style.Fill({
+            color:'rgba(37,99,235,0.1)'
+        })
+    })
+});
+
+// MAP
+
+const map = new ol.Map({
+
+    target:'map',
+
+    layers:[
+        osm,
+        wmsLayer,
+        wfsLayer
+    ],
+
+    view:new ol.View({
+
+        center:ol.proj.fromLonLat([-98,39]),
+        zoom:4
+    })
+});
+
+// POPUP
+
+const popupEl =
+document.getElementById('popup');
+
+const popupContent =
+document.getElementById('popup-content');
+
+const popup = new ol.Overlay({
+
+    element:popupEl,
+    autoPan:true
+});
+
+map.addOverlay(popup);
+
+// CLICK EVENT
+
+map.on('singleclick', function(evt){
+
+    popup.setPosition(undefined);
+
+    let featureFound = false;
+
+    // POPUP WFS
+
+    map.forEachFeatureAtPixel(
+        evt.pixel,
+
+        function(feature){
+
+            featureFound = true;
+
+            const data =
+            feature.getProperties();
+
+            popupContent.innerHTML = `
+
+                <div class="popup-title">
+                    ${data.STATE_NAME}
+                </div>
+
+                <div class="popup-content">
+
+                    <b>Populasi :</b>
+                    ${data.PERSONS}
+                    <br>
+
+                    <b>Luas :</b>
+                    ${data.LAND_KM} km²
+
+                </div>
+            `;
+
+            popup.setPosition(evt.coordinate);
+        }
+    );
+
+    // GETFEATUREINFO
+
+    if(!featureFound){
+
+        const resolution =
+        map.getView().getResolution();
+
+        const url =
+        wmsSource.getFeatureInfoUrl(
+
+            evt.coordinate,
+            resolution,
+            'EPSG:3857',
+
+            {
+                'INFO_FORMAT':'application/json'
+            }
+        );
+
+        if(url){
+
+            fetch(url)
+
+            .then(res => res.json())
+
+            .then(result => {
+
+                if(result.features.length > 0){
+
+                    const info =
+                    result.features[0].properties;
+
+                    popupContent.innerHTML = `
+
+                        <div class="popup-title">
+                            WMS Info
+                        </div>
+
+                        <div class="popup-content">
+
+                            <b>State :</b>
+                            ${info.STATE_NAME}
+                            <br>
+
+                            <b>Population :</b>
+                            ${info.PERSONS}
+
+                        </div>
+                    `;
+
+                    popup.setPosition(
+                        evt.coordinate
+                    );
+                }
+            });
+        }
+    }
+});
+
+// TOGGLE LAYER
+
+document
+.getElementById('wmsCheck')
+
+.addEventListener('change', function(){
+
+    wmsLayer.setVisible(
+        this.checked
+    );
+});
+
+document
+.getElementById('wfsCheck')
+
+.addEventListener('change', function(){
+
+    wfsLayer.setVisible(
+        this.checked
+    );
+});
+
+// FILTER DATA
+
+document
+.getElementById('filterData')
+
+.addEventListener('change', function(){
+
+    const filter = this.value;
+
+    // filter WMS
+
+    wmsSource.updateParams({
+
+        'CQL_FILTER':filter
+    });
+
+    // filter WFS
+
+    const newUrl =
+
+    'https://ahocevar.com/geoserver/wfs?' +
+    'service=WFS&' +
+    'version=1.1.0&' +
+    'request=GetFeature&' +
+    'typename=topp:states&' +
+    'outputFormat=application/json&' +
+    'srsname=EPSG:3857' +
+
+    (filter
+        ? '&CQL_FILTER=' +
+        encodeURIComponent(filter)
+        : '');
+
+    wfsSource.setUrl(newUrl);
+
+    wfsSource.refresh();
+});
+
+</script>
+
+</body>
+</html>
